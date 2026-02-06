@@ -98,16 +98,22 @@ fn init_sidebar_state() -> Result<(), JsValue> {
     let window = window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
     
-    if let Ok(Some(storage)) = window.local_storage() {
-        if let Ok(Some(closed)) = storage.get_item("sidebar_closed") {
-            if closed == "true" {
-                 if let Ok(Some(sidebar)) = document.query_selector(".sidebar") {
-                    let _ = sidebar.class_list().add_1("closed");
-                }
-                if let Ok(Some(content)) = document.query_selector(".content") {
-                    let _ = content.class_list().add_1("expanded");
-                }
-            }
+    // Default to closed unless user has explicitly set it to open
+    let should_close = if let Ok(Some(storage)) = window.local_storage() {
+        match storage.get_item("sidebar_closed") {
+            Ok(Some(closed)) => closed != "false", // Close unless explicitly set to "false"
+            _ => true, // No preference stored, default to closed
+        }
+    } else {
+        true // No storage available, default to closed
+    };
+
+    if should_close {
+        if let Ok(Some(sidebar)) = document.query_selector(".sidebar") {
+            let _ = sidebar.class_list().add_1("closed");
+        }
+        if let Ok(Some(content)) = document.query_selector(".content") {
+            let _ = content.class_list().add_1("expanded");
         }
     }
     Ok(())

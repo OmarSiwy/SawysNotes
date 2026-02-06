@@ -10,6 +10,7 @@ use tower_http::services::ServeDir;
 use askama::Template;
 use pulldown_cmark::{Parser, Options, html};
 use tokio::fs;
+use chrono::{DateTime, Local};
 
 #[tokio::main]
 async fn main() {
@@ -17,8 +18,9 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(index_handler))
-        .route("/:chapter", get(chapter_handler))
-        .route("/:chapter/:topic", get(topic_handler))
+        .route("/:category", get(category_handler))
+        .route("/:category/:chapter", get(chapter_handler))
+        .route("/:category/:chapter/:topic", get(topic_handler))
         .nest_service("/assets", ServeDir::new("assets"))
         .nest_service("/content", ServeDir::new("assets/content"))
         .nest_service("/dist", ServeDir::new("dist"))
@@ -55,12 +57,97 @@ struct SidebarItem {
 #[template(path = "sidebar.html")]
 struct SidebarTemplate {
     active_path: String,
+    current_category: String,
     items: Vec<SidebarItem>,
 }
 
-fn generate_sidebar() -> Vec<SidebarItem> {
-    let mut structure: BTreeMap<String, Vec<SidebarItem>> = BTreeMap::new();
+#[derive(Clone, Debug)]
+struct RecentlyAddedItem {
+    title: String,
+    path: String,
+    category: String,
+    date: String,
+}
+
+fn generate_recently_added() -> Vec<RecentlyAddedItem> {
     let content_dir = "assets/content";
+    let mut items: Vec<(std::time::SystemTime, RecentlyAddedItem)> = Vec::new();
+
+    for entry in WalkDir::new(content_dir).min_depth(1).sort_by_file_name() {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+
+        let relative_path = match path.strip_prefix(content_dir) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        
+        let components: Vec<_> = relative_path.components()
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .collect();
+
+        // Skip if in images folder
+        if components.iter().any(|c| c == "images") {
+            continue;
+        }
+
+        let metadata = match std::fs::metadata(path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        let modified = match metadata.modified() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+
+        let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
+        let title = format_title(&file_stem);
+        let link = format!("/{}", relative_path.with_extension("").to_string_lossy());
+        let category = format_title(&components[0]);
+
+        let datetime: DateTime<Local> = modified.into();
+        let date = datetime.format("%b %d, %Y %H:%M").to_string();
+
+        items.push((modified, RecentlyAddedItem {
+            title,
+            path: link,
+            category,
+            date,
+        }));
+    }
+
+    // Sort by modification time, most recent first
+    items.sort_by(|a, b| b.0.cmp(&a.0));
+
+    // Return top 10 items
+    items.into_iter().take(10).map(|(_, item)| item).collect()
+}
+
+fn generate_sidebar() -> Vec<SidebarItem> {
+    // Structure: category -> chapter -> topics
+    let mut categories: BTreeMap<String, BTreeMap<String, Vec<SidebarItem>>> = BTreeMap::new();
+    let content_dir = "assets/content";
+
+    // Auto-discover categories by scanning top-level folders (excluding images)
+    if let Ok(entries) = std::fs::read_dir(content_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let folder_name = path.file_name().unwrap().to_string_lossy().to_string();
+                if folder_name != "images" {
+                    categories.insert(folder_name, BTreeMap::new());
+                }
+            }
+        }
+    }
 
     for entry in WalkDir::new(content_dir).min_depth(1).sort_by_file_name() {
         let entry = entry.unwrap();
@@ -70,40 +157,80 @@ fn generate_sidebar() -> Vec<SidebarItem> {
             let relative_path = path.strip_prefix(content_dir).unwrap();
             let components: Vec<_> = relative_path.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
 
+            // Skip category index files (like analog.md, digital.md at root)
             if components.len() == 1 {
-                // Top level file (like index.md), skip or handle separately? 
-                // Index is usually home, so maybe skip for now or add as Home
                 continue;
             }
 
-            let chapter = components[0].clone();
             let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
-            
             let title = format_title(&file_stem);
             let link = format!("/{}", relative_path.with_extension("").to_string_lossy());
-             
-             // Very basic 2-level structure assumption for now based on current layout
-            if components.len() == 2 {
-                structure.entry(chapter).or_default().push(SidebarItem {
-                    title,
-                    path: link,
-                    children: vec![],
-                });
+
+            if components.len() == 3 {
+                // Full path: category/chapter/topic.md
+                let category = components[0].clone();
+                let chapter = components[1].clone();
+                
+                categories
+                    .entry(category)
+                    .or_default()
+                    .entry(chapter)
+                    .or_default()
+                    .push(SidebarItem {
+                        title,
+                        path: link,
+                        children: vec![],
+                    });
+            } else if components.len() == 2 {
+                // Direct category file: category/topic.md (like analog/overview.md)
+                let category = components[0].clone();
+                
+                categories
+                    .entry(category)
+                    .or_default()
+                    .entry("_direct".to_string())
+                    .or_default()
+                    .push(SidebarItem {
+                        title,
+                        path: link,
+                        children: vec![],
+                    });
             }
         }
     }
 
     let mut sidebar_items = Vec::new();
-    for (chapter, children) in structure {
-        if chapter == "images" { continue; }
+    for (category, chapters) in categories {
+        if category == "images" { continue; }
         
-        let title = format_title(&chapter);
-        let path = format!("/{}", chapter);
+        let mut chapter_items = Vec::new();
+        
+        for (chapter, topics) in chapters {
+            if chapter == "_direct" {
+                // Direct topics under category
+                chapter_items.extend(topics);
+            } else if chapter == "images" {
+                continue;
+            } else {
+                // Chapter with nested topics
+                let chapter_title = format_title(&chapter);
+                let chapter_path = format!("/{}/{}", category, chapter);
+                
+                chapter_items.push(SidebarItem {
+                    title: chapter_title,
+                    path: chapter_path,
+                    children: topics,
+                });
+            }
+        }
+        
+        let category_title = format_title(&category);
+        let category_path = format!("/{}", category);
         
         sidebar_items.push(SidebarItem {
-            title,
-            path,
-            children,
+            title: category_title,
+            path: category_path,
+            children: chapter_items,
         });
     }
     
@@ -111,15 +238,19 @@ fn generate_sidebar() -> Vec<SidebarItem> {
 }
 
 async fn index_handler(headers: HeaderMap) -> impl IntoResponse {
-    render_page("index", None, headers).await
+    render_page("index", None, None, headers).await
 }
 
-async fn chapter_handler(Path(chapter): Path<String>, headers: HeaderMap) -> impl IntoResponse {
-    render_page(&chapter, None, headers).await
+async fn category_handler(Path(category): Path<String>, headers: HeaderMap) -> impl IntoResponse {
+    render_page(&category, None, None, headers).await
 }
 
-async fn topic_handler(Path((chapter, topic)): Path<(String, String)>, headers: HeaderMap) -> impl IntoResponse {
-    render_page(&chapter, Some(&topic), headers).await
+async fn chapter_handler(Path((category, chapter)): Path<(String, String)>, headers: HeaderMap) -> impl IntoResponse {
+    render_page(&category, Some(&chapter), None, headers).await
+}
+
+async fn topic_handler(Path((category, chapter, topic)): Path<(String, String, String)>, headers: HeaderMap) -> impl IntoResponse {
+    render_page(&category, Some(&chapter), Some(&topic), headers).await
 }
 
 fn format_title(s: &str) -> String {
@@ -135,11 +266,11 @@ fn format_title(s: &str) -> String {
      .join(" ")
 }
 
-async fn render_page(chapter: &str, topic: Option<&str>, headers: HeaderMap) -> Response {
-    let file_path = if let Some(t) = topic {
-        format!("assets/content/{}/{}.md", chapter, t)
-    } else {
-        format!("assets/content/{}.md", chapter)
+async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>, _headers: HeaderMap) -> Response {
+    let file_path = match (chapter, topic) {
+        (Some(ch), Some(t)) => format!("assets/content/{}/{}/{}.md", category, ch, t),
+        (Some(ch), None) => format!("assets/content/{}/{}.md", category, ch),
+        (None, _) => format!("assets/content/{}.md", category),
     };
 
     let markdown_input = match fs::read_to_string(&file_path).await {
@@ -205,26 +336,66 @@ async fn render_page(chapter: &str, topic: Option<&str>, headers: HeaderMap) -> 
         }
     }).to_string();
 
+    let active_path = match (chapter, topic) {
+        (Some(ch), Some(t)) => format!("/{}/{}/{}", category, ch, t),
+        (Some(ch), None) => format!("/{}/{}", category, ch),
+        (None, _) => format!("/{}", category),
+    };
+
+    let current_category = if category == "index" {
+        String::new()
+    } else {
+        category.to_string()
+    };
+
     let sidebar = SidebarTemplate {
-        active_path: format!("/{}{}", chapter, topic.map(|t| format!("/{}", t)).unwrap_or_default()),
+        active_path,
+        current_category,
         items: generate_sidebar(),
     };
     
     let page_title = if let Some(t) = topic {
         format_title(t)
+    } else if let Some(ch) = chapter {
+        format_title(ch)
     } else {
-        if chapter == "index" {
+        if category == "index" {
             "Sawy's Notes".to_string()
         } else {
-            format_title(chapter)
+            format_title(category)
         }
+    };
+
+    // Inject recently added section for index page
+    let final_content = if category == "index" {
+        let recent_items = generate_recently_added();
+        let mut recently_added_html = String::from(r#"
+<h2>📝 Recently Added</h2>
+<table>
+<thead>
+<tr><th>Page</th><th>Category</th><th>Date Added</th></tr>
+</thead>
+<tbody>
+"#);
+        for item in recent_items {
+            recently_added_html.push_str(&format!(
+                r#"<tr><td><a href="{}">{}</a></td><td>{}</td><td>{}</td></tr>
+"#,
+                item.path, item.title, item.category, item.date
+            ));
+        }
+        recently_added_html.push_str("</tbody>\n</table>");
+        
+        format!("{}\n{}", html_output, recently_added_html)
+    } else {
+        html_output
     };
 
     let layout = LayoutTemplate {
         title: "Sawy's Notes",
         page_title,
         sidebar: &sidebar.render().unwrap(),
-        content: &html_output,
+        content: &final_content,
         theme: "light", // Default to light, JS handles toggle
     };
 

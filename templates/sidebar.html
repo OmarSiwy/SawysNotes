@@ -5,19 +5,42 @@
         <span></span>
     </button>
     <nav>
-        {% for item in items %}
-        <div>
-            <a href="{{ item.path }}" class="{% if active_path.starts_with(item.path) %}active{% endif %}">{{ item.title
-                }}</a>
-            {% if !item.children.is_empty() %}
-            <div class="nested">
-                {% for child in item.children %}
-                <a href="{{ child.path }}" class="{% if active_path == child.path %}active{% endif %}">{{ child.title
-                    }}</a>
-                {% endfor %}
-            </div>
+        {% for category in items %}
+        {% if current_category.is_empty() || current_category == category.path.trim_start_matches('/') %}
+        <div class="category">
+            {% if current_category.is_empty() %}
+            <a href="{{ category.path }}" class="category-link">{{ category.title }}</a>
+            {% else %}
+            <details class="category-dropdown" open>
+                <summary class="category-link active">{{ category.title }}</summary>
+                {% if !category.children.is_empty() %}
+                <div class="chapters">
+                    {% for child in category.children %}
+                    {% if !child.children.is_empty() %}
+                    <details class="chapter-dropdown" {% if active_path.starts_with(child.path.as_str()) %}open{% endif
+                        %}>
+                        <summary class="chapter-link">
+                            <span class="arrow">▶</span>{{ child.title }}
+                        </summary>
+                        <div class="topics">
+                            {% for topic in child.children %}
+                            <a href="{{ topic.path }}"
+                                class="topic-link {% if active_path == topic.path %}active{% endif %}">{{ topic.title
+                                }}</a>
+                            {% endfor %}
+                        </div>
+                    </details>
+                    {% else %}
+                    <a href="{{ child.path }}" class="topic-link {% if active_path == child.path %}active{% endif %}">{{
+                        child.title }}</a>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </details>
             {% endif %}
         </div>
+        {% endif %}
         {% endfor %}
     </nav>
 </aside>
