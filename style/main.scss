@@ -1,0 +1,473 @@
+/* Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=PT+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+:root {
+  /* Box sizing reset was here */
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  /* Mitchellh.com Light Theme (Default) */
+  --bg-color: #ffffff;
+  --text-color: #1a1a1a;
+  --link-color: #16a34a;
+  --sidebar-bg: #f9fafb;
+  --sidebar-border: #e5e7eb;
+  --code-bg: #fafafa;
+  --code-border: #e5e7eb;
+  --heading-color: #111827;
+  --topbar-bg: rgba(255, 255, 255, 0.9);
+  --example-bg: #fff;
+  --example-border: #e5e7eb;
+  --example-question-bg: #fef2f2;
+  --tokyo-orange: #7aa2f7;
+  /* Changed to Blue to be less intimidating */
+}
+
+$tokyo-orange: #7aa2f7;
+
+[data-theme="dark"] {
+  /* Tokyonight Dark Theme */
+  --bg-color: #1a1b26;
+  --text-color: #c0caf5;
+  --link-color: #7aa2f7;
+  /* Tokyo Blue */
+  --sidebar-bg: #16161e;
+  --sidebar-border: #292e42;
+  /* Tokyo Comment-ish */
+  --code-bg: #16161e;
+  --code-border: #292e42;
+  --heading-color: #7dcfff;
+  /* Tokyo Cyan */
+  --topbar-bg: rgba(26, 27, 38, 0.9);
+  --example-bg: #1f2335;
+  --example-border: #f7768e;
+  /* Red border kept */
+  --example-question-bg: rgba(247, 118, 142, 0.1);
+}
+
+body {
+  margin: 0;
+  font-family: "PT Serif", "Times New Roman", Times, serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  line-height: 1.75;
+  font-size: 1.05rem;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* Notes */
+blockquote.note {
+  border-left: 4px solid #facc15;
+  /* Yellow/Gold for Note */
+  background-color: rgba(250, 204, 21, 0.1);
+  padding: 1rem;
+  border-radius: 4px;
+  margin: 1.5rem 0;
+  color: var(--text-color);
+
+  strong {
+    color: #b45309;
+    /* Darker gold/orange */
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+}
+
+[data-theme="dark"] blockquote.note {
+  border-left-color: #eab308;
+  background-color: rgba(234, 179, 8, 0.1);
+
+  strong {
+    color: #fce7f3;
+    /* Light */
+  }
+}
+
+/* Multimedia */
+img,
+video {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 1rem 0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: block;
+  margin: 1rem auto;
+  /* Centering */
+}
+
+figure.image-container {
+  margin: 2rem auto;
+  text-align: center;
+  max-width: 100%;
+
+  figcaption {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    opacity: 0.8;
+  }
+}
+
+// Diagrams placeholder
+.circuit-diagram {
+  border: 1px dashed $tokyo-orange;
+  padding: 2rem;
+  text-align: center;
+  color: $tokyo-orange;
+  margin: 1rem 0;
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--heading-color);
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+h2 {
+  font-size: 1.25rem;
+}
+
+h3 {
+  font-size: 1.125rem;
+}
+
+a {
+  color: var(--link-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  transition: all 0.15s ease-in-out;
+
+  &:hover {
+    text-decoration-thickness: 2px;
+    opacity: 0.8;
+  }
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
+  background-color: var(--code-bg);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  color: var(--text-color);
+}
+
+pre {
+  background-color: var(--code-bg);
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--code-border);
+  overflow-x: auto;
+  line-height: 1.5;
+  margin: 1.5rem 0;
+
+  code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: 0.9em;
+    border: none;
+  }
+}
+
+/* Layout */
+#app {
+  display: flex;
+  min-height: 100vh;
+  padding-top: 45px;
+  /* Space for Topbar */
+  position: relative;
+}
+
+/* Topbar */
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 45px;
+  background-color: var(--topbar-bg);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--sidebar-border);
+  z-index: 1000;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1.5rem;
+  font-family: "Inter", sans-serif;
+  font-size: 0.9rem;
+  color: var(--text-color);
+
+  .left {
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-weight: 500;
+    opacity: 0.7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 40%;
+  }
+
+  button.theme-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    font-size: 1.2rem;
+    border-radius: 4px;
+    color: var(--text-color);
+
+    &:hover {
+      background-color: rgba(128, 128, 128, 0.1);
+    }
+  }
+}
+
+/* Sidebar Toggle Button */
+.sidebar-toggle {
+  /* Use explicit background/border resets if needed, but we want it to look like a button attached */
+  background: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-border);
+  border-left: none;
+  /* Connect to sidebar */
+  cursor: pointer;
+
+  /* Flex layout for hamburger lines */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  /* Clear spacing between lines */
+
+  width: 40px;
+  /* Larger hit area */
+  height: 40px;
+  padding: 0;
+
+  /* Absolute Position: Relative to .sidebar container (if relative) or viewport? 
+     Sidebar is fixed. Absolute child is relative to sidebar.
+     We want it sticking out to the right. 
+  */
+  position: absolute;
+  right: -40px;
+  /* Exact width */
+  top: 15px;
+
+  border-radius: 0 6px 6px 0;
+  z-index: 200;
+
+  span {
+    display: block;
+    width: 20px;
+    /* Wider lines */
+    height: 3px;
+    /* Thicker lines */
+    background-color: var(--text-color);
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+}
+
+.content {
+  flex-grow: 1;
+  padding: 3rem;
+  /* Fixed padding */
+  /* More breathing room */
+  margin-left: 260px;
+
+  /* Full width expansion */
+  max-width: none;
+  width: auto;
+
+  transition: margin-left 0.3s ease;
+
+  &.expanded {
+    margin-left: 0;
+    /* When expanded (sidebar closed), remove left margin and center/fill */
+    /* When expanded (sidebar closed), remove left margin and center/fill */
+    margin-left: 0;
+    max-width: none;
+    padding: 3rem;
+    /* Matches base padding */
+    /* Matches base padding */
+  }
+}
+
+.markdown-body {
+  max-width: none;
+  margin: 0 auto;
+}
+
+/* Sidebar Styling */
+.sidebar {
+  width: 260px;
+  background-color: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  padding: 1rem 1.5rem;
+  padding-top: 1rem;
+  /* Topbar handles top spacing now */
+  position: fixed;
+  top: 45px;
+  /* Below Topbar */
+  bottom: 0;
+  left: 0;
+  overflow-y: visible;
+  /* Allow button to stick out */
+  font-family: "Inter", sans-serif;
+  font-size: 0.9rem;
+  z-index: 100;
+  transition: transform 0.3s ease;
+
+  &.closed {
+    transform: translateX(-100%);
+  }
+
+  nav {
+    margin-top: 1rem;
+  }
+
+  a {
+    color: var(--text-color);
+    text-decoration: none;
+    display: block;
+    padding: 0.4rem 0;
+
+    &:hover {
+      color: var(--link-color);
+    }
+
+    &.active {
+      color: var(--link-color);
+      font-weight: 600;
+    }
+  }
+
+  .nested {
+    padding-left: 1rem;
+    margin-left: 2px;
+    border-left: 1px solid var(--sidebar-border);
+  }
+}
+
+/* Example Box */
+.example-box {
+  background-color: var(--example-bg);
+  border: 1px solid var(--sidebar-border);
+  /* border: 2px solid #ef4444; Removed red border */
+  border-radius: 8px;
+  margin: 1.5rem 0;
+  padding: 0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  font-family: "PT Serif", "Times New Roman", Times, serif;
+  text-align: left;
+
+  .question {
+    font-weight: 700;
+    padding: 1rem 1.5rem;
+    margin: 0;
+    background-color: var(--example-question-bg);
+    border-bottom: 1px solid var(--example-border);
+    color: var(--heading-color);
+    /* Red text for header - removed */
+    /* font-style: italic; - removed */
+  }
+
+  .question-detail {
+    padding: 1.5rem;
+    margin: 0;
+    color: var(--text-color);
+  }
+
+  details {
+    padding: 0.5rem 1.5rem;
+    border-top: 1px solid var(--example-border);
+    background-color: var(--sidebar-bg);
+    /* Use sidebar bg for contrast */
+    border-radius: 0 0 8px 8px;
+    color: var(--text-color);
+
+    summary {
+      cursor: pointer;
+      color: var(--link-color);
+      font-weight: 600;
+      font-family: "Inter", sans-serif;
+    }
+  }
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+    /* When open on mobile, it should slide in. We need a class for OPEN on mobile since default is closed here? 
+           Actually, the logic in JS toggles 'closed'. 
+           Default state:
+           Desktop: Open (no class), Mobile: Closed (transform -100%)?
+           
+           Current JS: toggles 'closed'.
+           If we want desktop default OPEN, and mobile default CLOSED.
+           
+           Let's standardise:
+           Sidebar has class 'closed' -> hidden.
+           No class -> visible.
+        */
+  }
+
+  /* On mobile, if we remove 'closed', it shows. */
+  .sidebar:not(.closed) {
+    transform: translateX(0);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+  }
+
+  /* On mobile, content shouldn't have margin when sidebar is open, sidebar overlays */
+  .content {
+    margin-left: 0;
+    padding: 1rem;
+  }
+
+  /* Mobile Topbar always shows toggle */
+  .sidebar-toggle {
+    display: flex;
+  }
+}
+
+/* Desktop Logic */
+@media (min-width: 769px) {
+
+  /* Toggle always visible now as requested */
+  .sidebar-toggle {
+    display: flex;
+  }
+}

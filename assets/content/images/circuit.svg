@@ -1,0 +1,21 @@
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" style="background-color: transparent;">
+  <!-- Hand-drawn style filter -->
+  <defs>
+    <filter id="handdrawn">
+      <feTurbulence type="fractalNoise" baseFrequency="0.01" numOctaves="3" result="noise" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" />
+    </filter>
+  </defs>
+  
+  <g stroke="currentColor" fill="none" stroke-width="2" filter="url(#handdrawn)" style="color: #ff9e64;">
+    <!-- Resistor -->
+    <path d="M 50 150 L 100 150 L 110 130 L 130 170 L 150 130 L 170 170 L 190 130 L 200 150 L 250 150" />
+    <!-- Capacitor -->
+    <line x1="250" y1="150" x2="250" y2="200" />
+    <line x1="230" y1="200" x2="270" y2="200" />
+    <line x1="230" y1="210" x2="270" y2="210" />
+    <line x1="250" y1="210" x2="250" y2="250" />
+    <!-- Text -->
+    <text x="120" y="100" stroke="none" fill="currentColor" font-family="Comic Sans MS, Chalkboard SE, sans-serif">R_load</text>
+  </g>
+</svg>
