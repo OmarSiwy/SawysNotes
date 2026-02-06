@@ -59,6 +59,7 @@ use std::collections::BTreeMap;
 struct SidebarItem {
     title: String,
     path: String,
+    slug: String,
     children: Vec<SidebarItem>,
 }
 
@@ -192,6 +193,7 @@ fn generate_sidebar() -> Vec<SidebarItem> {
                     .push(SidebarItem {
                         title,
                         path: link,
+                        slug: String::new(),
                         children: vec![],
                     });
             } else if components.len() == 2 {
@@ -206,6 +208,7 @@ fn generate_sidebar() -> Vec<SidebarItem> {
                     .push(SidebarItem {
                         title,
                         path: link,
+                        slug: String::new(),
                         children: vec![],
                     });
             }
@@ -234,6 +237,7 @@ fn generate_sidebar() -> Vec<SidebarItem> {
                 chapter_items.push(SidebarItem {
                     title: chapter_title,
                     path: chapter_path,
+                    slug: chapter,
                     children: topics,
                 });
             }
@@ -247,6 +251,7 @@ fn generate_sidebar() -> Vec<SidebarItem> {
         sidebar_items.push(SidebarItem {
             title: category_title,
             path: category_path,
+            slug: category,
             children: chapter_items,
         });
     }
@@ -356,10 +361,12 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
         }
     }).to_string();
 
+    let site_url = std::env::var("SITE_URL").unwrap_or_default();
+    
     let active_path = match (chapter, topic) {
-        (Some(ch), Some(t)) => format!("/{}/{}/{}", category, ch, t),
-        (Some(ch), None) => format!("/{}/{}", category, ch),
-        (None, _) => format!("/{}", category),
+        (Some(ch), Some(t)) => format!("{}{}/{}/{}", site_url, category, ch, t),
+        (Some(ch), None) => format!("{}{}/{}", site_url, category, ch),
+        (None, _) => format!("{}{}", site_url, category),
     };
 
     let current_category = if category == "index" {
