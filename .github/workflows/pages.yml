@@ -42,13 +42,36 @@ jobs:
       - name: Compile Sass
         run: sass style/main.scss style/main.css
       
-      - name: Prepare static files
+      - name: Build server
+        run: cargo build --release
+      
+      - name: Pre-render static pages
         run: |
+          # Start server in background
+          ./target/release/documentation &
+          SERVER_PID=$!
+          sleep 3
+          
+          # Create output directory
           mkdir -p _site
+          
+          # Crawl all pages using wget (recursive, convert links for static)
+          wget --mirror \
+               --convert-links \
+               --adjust-extension \
+               --page-requisites \
+               --no-parent \
+               --directory-prefix=_site \
+               --no-host-directories \
+               http://127.0.0.1:3000/ || true
+          
+          # Copy static assets that wget might miss
           cp -r dist _site/
           cp -r style _site/
           cp -r assets _site/
-          cp -r templates _site/
+          
+          # Stop server
+          kill $SERVER_PID || true
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
