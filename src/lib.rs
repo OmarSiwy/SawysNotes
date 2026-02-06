@@ -38,18 +38,36 @@ pub fn start() -> Result<(), JsValue> {
         let _ = init_scroll_spy();
         let _ = format_notes();
         let _ = highlight_sidebar();
+        let _ = attach_dynamic_listeners();
         
     }) as Box<dyn FnMut(_)>);
 
     document.body().expect("body").add_event_listener_with_callback("htmx:afterSwap", closure.as_ref().unchecked_ref())?;
     closure.forget(); // leakage is intended for global listener
     
-    attach_click_listeners()?;
+    attach_static_listeners()?;
+    attach_dynamic_listeners()?;
 
     Ok(())
 }
 
-fn attach_click_listeners() -> Result<(), JsValue> {
+fn attach_static_listeners() -> Result<(), JsValue> {
+    let window = window().expect("no global `window` exists");
+    let document = window.document().expect("should have a document on window");
+
+    // Theme Toggle
+    if let Some(btn) = document.query_selector(".theme-toggle")? {
+        let closure = Closure::wrap(Box::new(move || {
+            toggle_theme();
+        }) as Box<dyn FnMut()>);
+        let html_btn = btn.dyn_into::<HtmlElement>()?;
+        html_btn.set_onclick(Some(closure.as_ref().unchecked_ref()));
+        closure.forget();
+    }
+    Ok(())
+}
+
+fn attach_dynamic_listeners() -> Result<(), JsValue> {
     let window = window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
 
@@ -62,17 +80,6 @@ fn attach_click_listeners() -> Result<(), JsValue> {
         html_btn.set_onclick(Some(closure.as_ref().unchecked_ref()));
         closure.forget();
     }
-
-    // Theme Toggle
-    if let Some(btn) = document.query_selector(".theme-toggle")? {
-        let closure = Closure::wrap(Box::new(move || {
-            toggle_theme();
-        }) as Box<dyn FnMut()>);
-        let html_btn = btn.dyn_into::<HtmlElement>()?;
-        html_btn.set_onclick(Some(closure.as_ref().unchecked_ref()));
-        closure.forget();
-    }
-
     Ok(())
 }
 

@@ -61,6 +61,31 @@ jobs:
           mkdir -p _site
           
           # Crawl all pages using wget (recursive, convert links for static)
+          # Crawl all pages using wget (recursive, convert links for static)
+          # We need to crawl local server which is running at root,
+          # but the generated HTML will now have /SawysNotes/ prefix on links.
+          # Wget needs to follow them. Actually, wget is crawling localhost:3000.
+          # The server returns HTML with /SawysNotes/ links.
+          # Wget might fail to follow /SawysNotes/ links if they don't map to localhost:3000/SawysNotes
+          # 
+          # WAIT: If the server generates links like "/SawysNotes/analog", clicking them on localhost:3000
+          # leads to localhost:3000/SawysNotes/analog.
+          # But our axum router is not mounted at /SawysNotes.
+          #
+          # FIX: We must update the server to ALSO respect SITE_URL in routing?
+          # OR: we just strip the prefix in the router?
+          #
+          # Simpler approach:
+          # If we generate static site for GitHub pages, we can just let axum run at root,
+          # but we need to trick wget or the router.
+          #
+          # Actually, if we set SITE_URL=/SawysNotes, the links become /SawysNotes/foo.
+          # Wget sees <a href="/SawysNotes/foo">. It requests http://127.0.0.1:3000/SawysNotes/foo.
+          # Our router expects /foo.
+          #
+          # So we ALSO need to wrap the router in a Nest or just handle the strip prefix.
+          
+          # Actually, we should just crawl the site URL
           wget --mirror \
                --convert-links \
                --adjust-extension \
@@ -68,7 +93,8 @@ jobs:
                --no-parent \
                --directory-prefix=_site \
                --no-host-directories \
-               http://127.0.0.1:3000/ || true
+               http://127.0.0.1:3000/SawysNotes/ || true
+
           
           # Copy static assets that wget might miss
           cp -r dist _site/

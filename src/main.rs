@@ -16,7 +16,7 @@ use chrono::{DateTime, Local};
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/", get(index_handler))
         .route("/:category", get(category_handler))
         .route("/:category/:chapter", get(chapter_handler))
@@ -25,6 +25,13 @@ async fn main() {
         .nest_service("/content", ServeDir::new("assets/content"))
         .nest_service("/dist", ServeDir::new("dist"))
         .nest_service("/style", ServeDir::new("style"));
+
+    // If SITE_URL is set (e.g. /SawysNotes), nest the app under that path
+    if let Ok(site_url) = std::env::var("SITE_URL") {
+        if !site_url.is_empty() {
+             app = Router::new().nest(&site_url, app);
+        }
+    }
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("listening on {}", addr);
@@ -40,7 +47,9 @@ struct LayoutTemplate<'a> {
     sidebar: &'a str,
     content: &'a str,
     theme: &'a str,
+    site_url: &'a str,
 }
+
 
 use regex::Regex;
 use walkdir::WalkDir;
@@ -110,8 +119,10 @@ fn generate_recently_added() -> Vec<RecentlyAddedItem> {
 
         let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
         let title = format_title(&file_stem);
-        let link = format!("/{}", relative_path.with_extension("").to_string_lossy());
+        let site_url = std::env::var("SITE_URL").unwrap_or_default();
+        let link = format!("{}{}", site_url, format!("/{}", relative_path.with_extension("").to_string_lossy()));
         let category = format_title(&components[0]);
+
 
         let datetime: DateTime<Local> = modified.into();
         let date = datetime.format("%b %d, %Y %H:%M").to_string();
@@ -164,7 +175,9 @@ fn generate_sidebar() -> Vec<SidebarItem> {
 
             let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
             let title = format_title(&file_stem);
-            let link = format!("/{}", relative_path.with_extension("").to_string_lossy());
+            let site_url = std::env::var("SITE_URL").unwrap_or_default();
+            let link = format!("{}{}", site_url, format!("/{}", relative_path.with_extension("").to_string_lossy()));
+
 
             if components.len() == 3 {
                 // Full path: category/chapter/topic.md
@@ -214,7 +227,9 @@ fn generate_sidebar() -> Vec<SidebarItem> {
             } else {
                 // Chapter with nested topics
                 let chapter_title = format_title(&chapter);
-                let chapter_path = format!("/{}/{}", category, chapter);
+                let site_url = std::env::var("SITE_URL").unwrap_or_default();
+                let chapter_path = format!("{}{}", site_url, format!("/{}/{}", category, chapter));
+
                 
                 chapter_items.push(SidebarItem {
                     title: chapter_title,
@@ -225,7 +240,9 @@ fn generate_sidebar() -> Vec<SidebarItem> {
         }
         
         let category_title = format_title(&category);
-        let category_path = format!("/{}", category);
+        let site_url = std::env::var("SITE_URL").unwrap_or_default();
+        let category_path = format!("{}{}", site_url, format!("/{}", category));
+
         
         sidebar_items.push(SidebarItem {
             title: category_title,
@@ -391,12 +408,15 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
         html_output
     };
 
+    let site_url = std::env::var("SITE_URL").unwrap_or_default();
+
     let layout = LayoutTemplate {
         title: "Sawy's Notes",
         page_title,
         sidebar: &sidebar.render().unwrap(),
         content: &final_content,
         theme: "light", // Default to light, JS handles toggle
+        site_url: &site_url,
     };
 
     Html(layout.render().unwrap()).into_response()

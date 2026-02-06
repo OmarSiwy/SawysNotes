@@ -5,7 +5,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="/style/main.css" />
+    <link rel="stylesheet" href="{{ site_url }}/style/main.css" />
+
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script>
         MathJax = {
@@ -20,7 +21,8 @@
         src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
         </script>
     <script type="module">
-        import init from "/dist/documentation.js";
+        import init from "{{ site_url }}/dist/documentation.js";
+
         init();
     </script>
 </head>
@@ -28,7 +30,8 @@
 <body>
     <div class="topbar">
         <div class="left">
-            <a href="/" class="site-title">Sawy's Notes</a>
+            <a href="{{ site_url }}/" class="site-title">Sawy's Notes</a>
+
         </div>
         <div class="center" id="topbar-center">
             {{ page_title }}
