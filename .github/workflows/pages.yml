@@ -51,6 +51,8 @@ jobs:
         run: cargo build --release
       
       - name: Pre-render static pages
+        env:
+          SITE_URL: /SawysNotes
         run: |
           # Start server in background
           ./target/release/documentation &
@@ -61,6 +63,7 @@ jobs:
           mkdir -p _site
           
           # Crawl all pages using wget (recursive, convert links for static)
+          # We check the nested path /SawysNotes/ because SITE_URL is set.
           wget --mirror \
                --convert-links \
                --adjust-extension \
@@ -68,7 +71,8 @@ jobs:
                --no-parent \
                --directory-prefix=_site \
                --no-host-directories \
-               http://127.0.0.1:3000/ || true
+               --cut-dirs=1 \
+               http://127.0.0.1:3000/SawysNotes/ || true
           
           # Copy static assets that wget might miss
           cp -r dist _site/
