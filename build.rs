@@ -13,6 +13,12 @@ fn main() {
         }
     }
 
+    // Allow skipping WASM build explicitly (e.g. in CI where it's built separately)
+    if std::env::var("SKIP_WASM_BUILD").is_ok() {
+        println!("cargo:warning=Skipping WASM build via SKIP_WASM_BUILD env var");
+        return;
+    }
+
     // Check if wasm-pack is installed
     let status = Command::new("wasm-pack")
         .arg("--version")

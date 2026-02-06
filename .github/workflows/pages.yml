@@ -46,6 +46,8 @@ jobs:
         run: sass style/main.scss style/main.css
       
       - name: Build server
+        env:
+          SKIP_WASM_BUILD: 1
         run: cargo build --release
       
       - name: Pre-render static pages
