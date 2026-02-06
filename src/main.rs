@@ -290,9 +290,13 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
         (None, _) => format!("assets/content/{}.md", category),
     };
 
+
+
     let markdown_input = match fs::read_to_string(&file_path).await {
         Ok(content) => content,
-        Err(_) => return Html("<h1>404 Not Found</h1>".to_string()).into_response(),
+        Err(_) => {
+            return Html("<h1>404 Not Found</h1>".to_string()).into_response();
+        }
     };
 
     let mut options = Options::empty();
@@ -310,8 +314,7 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
     html::push_html(&mut html_output, parser);
 
     let mut current_fig = 1;
-    // Debug: Print HTML to see what we are matching against
-    println!("DEBUG HTML: {}", html_output);
+
 
     // Regex to match img tags with src and alt in ANY order
     // Matches: <img [stuff] src="..." [stuff] alt="..." [stuff] > OR <img [stuff] alt="..." [stuff] src="..." [stuff] >

@@ -1,5 +1,0 @@
-nohup: ignoring input
-warning: documentation@0.1.0: Skipping WASM build via SKIP_WASM_BUILD env var
-    Finished `release` profile [optimized] target(s) in 0.05s
-     Running `target/release/documentation`
-listening on 127.0.0.1:3000
