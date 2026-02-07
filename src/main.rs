@@ -11,11 +11,39 @@ use askama::Template;
 use pulldown_cmark::{Parser, Options, html};
 use tokio::fs;
 use chrono::{DateTime, Local};
+use regex::Regex;
+use walkdir::WalkDir;
+use std::collections::BTreeMap;
+use std::sync::LazyLock;
+
+// Compiled regexes for image tag processing
+static IMG_TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"<img\s+([^>]+)/?>"#).unwrap());
+static SRC_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"src="([^"]+)""#).unwrap());
+static ALT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"alt="([^"]*)""#).unwrap());
+static TITLE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"title="([^"]*)""#).unwrap());
+
+/// Get the SITE_URL environment variable or empty string
+fn get_site_url() -> String {
+    std::env::var("SITE_URL").unwrap_or_default()
+}
+
+/// Parse a numbered name like "1) MosFETs" into (sort_key, clean_name)
+fn parse_numbered_name(name: &str) -> (i32, String) {
+    if let Some(pos) = name.find(')') {
+        if let Ok(num) = name[..pos].trim().parse::<i32>() {
+            return (num, name[pos + 1..].trim().to_string());
+        }
+    }
+    (i32::MAX, name.to_string())
+}
+
+/// Build a link path with site_url prefix
+fn build_link(path: &str) -> String {
+    format!("{}{}", get_site_url(), path)
+}
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
-
     let mut app = Router::new()
         .route("/", get(index_handler))
         .route("/:category", get(category_handler))
@@ -26,15 +54,14 @@ async fn main() {
         .nest_service("/dist", ServeDir::new("dist"))
         .nest_service("/style", ServeDir::new("style"));
 
-    // If SITE_URL is set (e.g. /SawysNotes), nest the app under that path
     if let Ok(site_url) = std::env::var("SITE_URL") {
         if !site_url.is_empty() {
-             app = Router::new().nest(&site_url, app);
+            app = Router::new().nest(&site_url, app);
         }
     }
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    tracing::info!("listening on {}", addr);
+    println!("Listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
@@ -50,16 +77,10 @@ struct LayoutTemplate<'a> {
     site_url: &'a str,
 }
 
-
-use regex::Regex;
-use walkdir::WalkDir;
-use std::collections::BTreeMap;
-
 #[derive(Clone, Debug)]
 struct SidebarItem {
     title: String,
     path: String,
-    slug: String,
     children: Vec<SidebarItem>,
 }
 
@@ -84,178 +105,122 @@ fn generate_recently_added() -> Vec<RecentlyAddedItem> {
     let mut items: Vec<(std::time::SystemTime, RecentlyAddedItem)> = Vec::new();
 
     for entry in WalkDir::new(content_dir).min_depth(1).sort_by_file_name() {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
-        
+
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
 
-        let relative_path = match path.strip_prefix(content_dir) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-        
+        let Ok(relative_path) = path.strip_prefix(content_dir) else { continue };
         let components: Vec<_> = relative_path.components()
             .map(|c| c.as_os_str().to_string_lossy().to_string())
             .collect();
 
-        // Skip if in images folder
         if components.iter().any(|c| c == "images") {
             continue;
         }
 
-        let metadata = match std::fs::metadata(path) {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-
-        let modified = match metadata.modified() {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
+        let Ok(metadata) = std::fs::metadata(path) else { continue };
+        let Ok(modified) = metadata.modified() else { continue };
 
         let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
         let title = format_title(&file_stem);
-        let site_url = std::env::var("SITE_URL").unwrap_or_default();
-        let link = format!("{}{}", site_url, format!("/{}", relative_path.with_extension("").to_string_lossy()));
+        let link = build_link(&format!("/{}", relative_path.with_extension("").to_string_lossy()));
         let category = format_title(&components[0]);
-
-
         let datetime: DateTime<Local> = modified.into();
-        let date = datetime.format("%b %d, %Y %H:%M").to_string();
 
         items.push((modified, RecentlyAddedItem {
             title,
             path: link,
             category,
-            date,
+            date: datetime.format("%b %d, %Y %H:%M").to_string(),
         }));
     }
 
-    // Sort by modification time, most recent first
     items.sort_by(|a, b| b.0.cmp(&a.0));
-
-    // Return top 10 items
     items.into_iter().take(10).map(|(_, item)| item).collect()
 }
 
 fn generate_sidebar() -> Vec<SidebarItem> {
-    // Structure: category -> chapter -> topics
-    let mut categories: BTreeMap<String, BTreeMap<String, Vec<SidebarItem>>> = BTreeMap::new();
     let content_dir = "assets/content";
+    // Structure: (sort_key, category_name) -> (sort_key, chapter_name) -> topics
+    let mut categories: BTreeMap<(i32, String), BTreeMap<(i32, String), Vec<SidebarItem>>> = BTreeMap::new();
 
-    // Auto-discover categories by scanning top-level folders (excluding images)
+    // Auto-discover categories
     if let Ok(entries) = std::fs::read_dir(content_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
                 let folder_name = path.file_name().unwrap().to_string_lossy().to_string();
                 if folder_name != "images" {
-                    categories.insert(folder_name, BTreeMap::new());
+                    let key = parse_numbered_name(&folder_name);
+                    categories.insert(key, BTreeMap::new());
                 }
             }
         }
     }
 
     for entry in WalkDir::new(content_dir).min_depth(1).sort_by_file_name() {
-        let entry = entry.unwrap();
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
-        
-        if path.extension().and_then(|e| e.to_str()) == Some("md") {
-            let relative_path = path.strip_prefix(content_dir).unwrap();
-            let components: Vec<_> = relative_path.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
 
-            // Skip category index files (like analog.md, digital.md at root)
-            if components.len() == 1 {
-                continue;
-            }
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
 
-            let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
-            let title = format_title(&file_stem);
-            let site_url = std::env::var("SITE_URL").unwrap_or_default();
-            let link = format!("{}{}", site_url, format!("/{}", relative_path.with_extension("").to_string_lossy()));
+        let relative_path = path.strip_prefix(content_dir).unwrap();
+        let components: Vec<_> = relative_path.components()
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .collect();
 
+        if components.len() == 1 {
+            continue;  // Skip category index files
+        }
 
-            if components.len() == 3 {
-                // Full path: category/chapter/topic.md
-                let category = components[0].clone();
-                let chapter = components[1].clone();
-                
-                categories
-                    .entry(category)
-                    .or_default()
-                    .entry(chapter)
-                    .or_default()
-                    .push(SidebarItem {
-                        title,
-                        path: link,
-                        slug: String::new(),
-                        children: vec![],
-                    });
-            } else if components.len() == 2 {
-                // Direct category file: category/topic.md (like analog/overview.md)
-                let category = components[0].clone();
-                
-                categories
-                    .entry(category)
-                    .or_default()
-                    .entry("_direct".to_string())
-                    .or_default()
-                    .push(SidebarItem {
-                        title,
-                        path: link,
-                        slug: String::new(),
-                        children: vec![],
-                    });
-            }
+        let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
+        let title = format_title(&file_stem);
+        let link = build_link(&format!("/{}", relative_path.with_extension("").to_string_lossy()));
+
+        if components.len() == 3 {
+            let cat_key = parse_numbered_name(&components[0]);
+            let chap_key = parse_numbered_name(&components[1]);
+            categories.entry(cat_key).or_default().entry(chap_key).or_default()
+                .push(SidebarItem { title, path: link, children: vec![] });
+        } else if components.len() == 2 {
+            let cat_key = parse_numbered_name(&components[0]);
+            categories.entry(cat_key).or_default()
+                .entry((i32::MIN, "_direct".to_string())).or_default()
+                .push(SidebarItem { title, path: link, children: vec![] });
         }
     }
 
     let mut sidebar_items = Vec::new();
-    for (category, chapters) in categories {
-        if category == "images" { continue; }
-        
+    for ((_, category_name), chapters) in categories {
+        if category_name == "images" { continue; }
+
         let mut chapter_items = Vec::new();
-        
-        for (chapter, topics) in chapters {
-            if chapter == "_direct" {
-                // Direct topics under category
+        for ((_, chapter_name), topics) in chapters {
+            if chapter_name == "_direct" {
                 chapter_items.extend(topics);
-            } else if chapter == "images" {
+            } else if chapter_name == "images" {
                 continue;
             } else {
-                // Chapter with nested topics
-                let chapter_title = format_title(&chapter);
-                let site_url = std::env::var("SITE_URL").unwrap_or_default();
-                let chapter_path = format!("{}{}", site_url, format!("/{}/{}", category, chapter));
-
-                
                 chapter_items.push(SidebarItem {
-                    title: chapter_title,
-                    path: chapter_path,
-                    slug: chapter,
+                    title: format_title(&chapter_name),
+                    path: build_link(&format!("/{}/{}", category_name, chapter_name)),
                     children: topics,
                 });
             }
         }
-        
-        let category_title = format_title(&category);
-        let site_url = std::env::var("SITE_URL").unwrap_or_default();
-        let category_path = format!("{}{}", site_url, format!("/{}", category));
 
-        
         sidebar_items.push(SidebarItem {
-            title: category_title,
-            path: category_path,
-            slug: category,
+            title: format_title(&category_name),
+            path: build_link(&format!("/{}", category_name)),
             children: chapter_items,
         });
     }
-    
+
     sidebar_items
 }
 
@@ -276,16 +241,20 @@ async fn topic_handler(Path((category, chapter, topic)): Path<(String, String, S
 }
 
 fn format_title(s: &str) -> String {
-    s.split('_')
-     .map(|word| {
-         let mut c = word.chars();
-         match c.next() {
-             None => String::new(),
-             Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-         }
-     })
-     .collect::<Vec<String>>()
-     .join(" ")
+    // Strip numeric prefix like "1) " first
+    let (_, clean_name) = parse_numbered_name(s);
+    let name = if clean_name.is_empty() { s } else { &clean_name };
+
+    name.split('_')
+        .map(|word| {
+            let mut c = word.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        })
+        .collect::<Vec<String>>()
+        .join(" ")
 }
 
 async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>, _headers: HeaderMap) -> Response {
@@ -309,51 +278,48 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
     options.insert(Options::ENABLE_FOOTNOTES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
-    // Enable standard behavior which usually passes HTML through in cmark 0.10
-    // unless strictly configured otherwise.
     options.insert(Options::ENABLE_SMART_PUNCTUATION);
+    options.insert(Options::ENABLE_MATH);
     
     let parser = Parser::new_ext(&markdown_input, options);
     
+    // Transform events to handle math
+    let parser = parser.map(|event| {
+        match event {
+            pulldown_cmark::Event::InlineMath(cow) => {
+                // Try render with defaults, which is displayMode: false usually? 
+                // Actually katex-rs 'render' might be display mode. 
+                // Let's assume 'render' works and returns HTML.
+                // We'll trust the error message about 'render_inline' and just use 'render' for now.
+                let html = katex::render(&cow).unwrap_or_else(|_| cow.to_string());
+                pulldown_cmark::Event::Html(html.into())
+            }
+            pulldown_cmark::Event::DisplayMath(cow) => {
+                let html = katex::render(&cow).unwrap_or_else(|_| cow.to_string());
+                pulldown_cmark::Event::Html(html.into())
+            }
+            _ => event,
+        }
+    });
+
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
 
     let mut current_fig = 1;
-
-
-    // Regex to match img tags with src and alt in ANY order
-    // Matches: <img [stuff] src="..." [stuff] alt="..." [stuff] > OR <img [stuff] alt="..." [stuff] src="..." [stuff] >
-    // We also want to capture 'title' if present.
-    // Simplifying: Just capture the whole tag and parse attributes manually with simpler regexes is more robust.
-    let img_tag_regex = Regex::new(r#"<img\s+([^>]+)/?>"#).unwrap();
-    let src_regex = Regex::new(r#"src="([^"]+)""#).unwrap();
-    let alt_regex = Regex::new(r#"alt="([^"]*)""#).unwrap();
-    let title_regex = Regex::new(r#"title="([^"]*)""#).unwrap();
-
     let html_string = html_output;
-    let html_output = img_tag_regex.replace_all(&html_string, |caps: &regex::Captures| {
+    let html_output = IMG_TAG_RE.replace_all(&html_string, |caps: &regex::Captures| {
         let attrs = &caps[1];
-        
-        let src = src_regex.captures(attrs).map(|c| c[1].to_string()).unwrap_or_default();
-        let alt = alt_regex.captures(attrs).map(|c| c[1].to_string()).unwrap_or_default();
-        let title = title_regex.captures(attrs).map(|c| c[1].to_string()).unwrap_or_default();
-        
-        let style = if !title.is_empty() {
-            format!("width: {};", title)
-        } else {
-            String::new()
-        };
-
+        let src = SRC_RE.captures(attrs).map(|c| c[1].to_string()).unwrap_or_default();
+        let alt = ALT_RE.captures(attrs).map(|c| c[1].to_string()).unwrap_or_default();
+        let title = TITLE_RE.captures(attrs).map(|c| c[1].to_string()).unwrap_or_default();
+        let style = if !title.is_empty() { format!("width: {};", title) } else { String::new() };
         let img_html = format!(r#"<img src="{}" alt="{}" style="{}">"#, src, alt, style);
 
         if !alt.is_empty() {
             let num = current_fig;
             current_fig += 1;
             format!(
-                r#"<figure class="image-container">
-                    {}
-                    <figcaption><strong>Fig. {}:</strong> {}</figcaption>
-                   </figure>"#,
+                r#"<figure class="image-container">\n{}\n<figcaption><strong>Fig. {}:</strong> {}</figcaption>\n</figure>"#,
                 img_html, num, alt
             )
         } else {
@@ -361,12 +327,10 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
         }
     }).to_string();
 
-    let site_url = std::env::var("SITE_URL").unwrap_or_default();
-    
     let active_path = match (chapter, topic) {
-        (Some(ch), Some(t)) => format!("{}{}/{}/{}", site_url, category, ch, t),
-        (Some(ch), None) => format!("{}{}/{}", site_url, category, ch),
-        (None, _) => format!("{}{}", site_url, category),
+        (Some(ch), Some(t)) => format!("/{}/{}/{}", category, ch, t),
+        (Some(ch), None) => format!("/{}/{}", category, ch),
+        (None, _) => format!("/{}", category),
     };
 
     let current_category = if category == "index" {
@@ -418,18 +382,15 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
         html_output
     };
 
-    let site_url = std::env::var("SITE_URL").unwrap_or_default();
-
+    let site_url = get_site_url();
     let layout = LayoutTemplate {
         title: "Sawy's Notes",
         page_title,
         sidebar: &sidebar.render().unwrap(),
         content: &final_content,
-        theme: "light", // Default to light, JS handles toggle
+        theme: "light",
         site_url: &site_url,
     };
 
     Html(layout.render().unwrap()).into_response()
 }
-
-

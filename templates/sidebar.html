@@ -6,7 +6,7 @@
     </button>
     <nav>
         {% for category in items %}
-        {% if current_category.is_empty() || current_category == category.slug %}
+        {% if current_category.is_empty() || current_category == category.path.trim_start_matches('/') %}
         <div class="category">
             {% if current_category.is_empty() %}
             <a href="{{ category.path }}" class="category-link">{{ category.title }}</a>
