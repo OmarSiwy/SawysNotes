@@ -52,8 +52,8 @@ jobs:
       
       - name: Pre-render static pages
         run: |
-          # Start server in background with SITE_URL for GitHub Pages
-          SITE_URL="/SawysNotes" ./target/release/documentation &
+          # Start server in background (no SITE_URL - we'll fix paths after)
+          ./target/release/documentation &
           SERVER_PID=$!
           sleep 3
           
@@ -77,6 +77,12 @@ jobs:
           
           # Stop server
           kill $SERVER_PID || true
+          
+          # Fix paths for GitHub Pages subdirectory
+          find _site -name "*.html" -exec sed -i 's|href="/|href="/SawysNotes/|g' {} \;
+          find _site -name "*.html" -exec sed -i 's|src="/|src="/SawysNotes/|g' {} \;
+          find _site -name "*.html" -exec sed -i 's|from "/|from "/SawysNotes/|g' {} \;
+          find _site -name "*.html" -exec sed -i 's|http://127.0.0.1:3000|/SawysNotes|g' {} \;
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
