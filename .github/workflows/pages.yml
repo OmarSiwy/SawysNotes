@@ -52,8 +52,8 @@ jobs:
       
       - name: Pre-render static pages
         run: |
-          # Start server in background
-          ./target/release/documentation &
+          # Start server in background with SITE_URL for GitHub Pages
+          SITE_URL="/SawysNotes" ./target/release/documentation &
           SERVER_PID=$!
           sleep 3
           
