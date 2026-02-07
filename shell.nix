@@ -2,28 +2,13 @@
 
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    rustc
-    cargo
-    rustfmt
-    rust-analyzer
-    clippy
-    
-    # CSS tools
-    dart-sass
-    
-    # WASM tools
-    wasm-pack
-    trunk
-    
-    # System deps
-    lld
-    clang
-    pkg-config
-    openssl
+    rustc cargo
+    dart-sass       # For SCSS compilation
+    wasm-pack       # For WASM build (run separately)
+    pkg-config openssl  # Required by some crates
   ];
 
   shellHook = ''
-    echo "Rust + WASM Environment Loaded"
-    echo "Run 'trunk serve' to start data server"
+    echo "Dev shell ready. Run 'cargo run' for server, 'wasm-pack build --target web' for WASM."
   '';
 }
