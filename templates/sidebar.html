@@ -15,24 +15,51 @@
                 <summary class="category-link active">{{ category.title }}</summary>
                 {% if !category.children.is_empty() %}
                 <div class="chapters">
-                    {% for child in category.children %}
-                    {% if !child.children.is_empty() %}
-                    <details class="chapter-dropdown" {% if active_path.starts_with(child.path.as_str()) %}open{% endif
+                    {% for level1 in category.children %}
+                    {% if !level1.children.is_empty() %}
+                    <details class="chapter-dropdown" {% if active_path.starts_with(level1.path.as_str()) %}open{% endif
                         %}>
-                        <summary class="chapter-link">
-                            <span class="arrow">▶</span>{{ child.title }}
-                        </summary>
+                        <summary class="chapter-link"><span class="arrow">▶</span>{{ level1.title }}</summary>
                         <div class="topics">
-                            {% for topic in child.children %}
-                            <a href="{{ topic.path }}"
-                                class="topic-link {% if active_path == topic.path %}active{% endif %}">{{ topic.title
+                            {% for level2 in level1.children %}
+                            {% if !level2.children.is_empty() %}
+                            <details class="chapter-dropdown" {% if active_path.starts_with(level2.path.as_str())
+                                %}open{% endif %}>
+                                <summary class="chapter-link"><span class="arrow">▶</span>{{ level2.title }}</summary>
+                                <div class="topics">
+                                    {% for level3 in level2.children %}
+                                    {% if !level3.children.is_empty() %}
+                                    <details class="chapter-dropdown" {% if
+                                        active_path.starts_with(level3.path.as_str()) %}open{% endif %}>
+                                        <summary class="chapter-link"><span class="arrow">▶</span>{{ level3.title }}
+                                        </summary>
+                                        <div class="topics">
+                                            {% for level4 in level3.children %}
+                                            <a href="{{ level4.path }}"
+                                                class="topic-link {% if active_path == level4.path %}active{% endif %}">{{
+                                                level4.title }}</a>
+                                            {% endfor %}
+                                        </div>
+                                    </details>
+                                    {% else %}
+                                    <a href="{{ level3.path }}"
+                                        class="topic-link {% if active_path == level3.path %}active{% endif %}">{{
+                                        level3.title }}</a>
+                                    {% endif %}
+                                    {% endfor %}
+                                </div>
+                            </details>
+                            {% else %}
+                            <a href="{{ level2.path }}"
+                                class="topic-link {% if active_path == level2.path %}active{% endif %}">{{ level2.title
                                 }}</a>
+                            {% endif %}
                             {% endfor %}
                         </div>
                     </details>
                     {% else %}
-                    <a href="{{ child.path }}" class="topic-link {% if active_path == child.path %}active{% endif %}">{{
-                        child.title }}</a>
+                    <a href="{{ level1.path }}"
+                        class="topic-link {% if active_path == level1.path %}active{% endif %}">{{ level1.title }}</a>
                     {% endif %}
                     {% endfor %}
                 </div>

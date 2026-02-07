@@ -13,7 +13,6 @@ use tokio::fs;
 use chrono::{DateTime, Local};
 use regex::Regex;
 use walkdir::WalkDir;
-use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 // Compiled regexes for image tag processing
@@ -46,9 +45,7 @@ fn build_link(path: &str) -> String {
 async fn main() {
     let mut app = Router::new()
         .route("/", get(index_handler))
-        .route("/:category", get(category_handler))
-        .route("/:category/:chapter", get(chapter_handler))
-        .route("/:category/:chapter/:topic", get(topic_handler))
+        .route("/*path", get(dynamic_handler))
         .nest_service("/assets", ServeDir::new("assets"))
         .nest_service("/content", ServeDir::new("assets/content"))
         .nest_service("/dist", ServeDir::new("dist"))
@@ -143,101 +140,87 @@ fn generate_recently_added() -> Vec<RecentlyAddedItem> {
 }
 
 fn generate_sidebar() -> Vec<SidebarItem> {
-    let content_dir = "assets/content";
-    // Structure: (sort_key, category_name) -> (sort_key, chapter_name) -> topics
-    let mut categories: BTreeMap<(i32, String), BTreeMap<(i32, String), Vec<SidebarItem>>> = BTreeMap::new();
-
-    // Auto-discover categories
-    if let Ok(entries) = std::fs::read_dir(content_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let folder_name = path.file_name().unwrap().to_string_lossy().to_string();
-                if folder_name != "images" {
-                    let key = parse_numbered_name(&folder_name);
-                    categories.insert(key, BTreeMap::new());
-                }
-            }
-        }
-    }
-
-    for entry in WalkDir::new(content_dir).min_depth(1).sort_by_file_name() {
-        let Ok(entry) = entry else { continue };
-        let path = entry.path();
-
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
-
-        let relative_path = path.strip_prefix(content_dir).unwrap();
-        let components: Vec<_> = relative_path.components()
-            .map(|c| c.as_os_str().to_string_lossy().to_string())
+    fn scan_dir(dir: &std::path::Path, url_prefix: &str) -> Vec<SidebarItem> {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name == "images" { return None; }
+                Some((parse_numbered_name(&name), e.path(), name))
+            })
             .collect();
 
-        if components.len() == 1 {
-            continue;  // Skip category index files
-        }
+        // Sort by numeric prefix
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-        let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
-        let title = format_title(&file_stem);
-        let link = build_link(&format!("/{}", relative_path.with_extension("").to_string_lossy()));
+        let mut items = Vec::new();
+        for ((_, clean_name), path, original_name) in entries {
+            let display_name = if clean_name.is_empty() { original_name.clone() } else { clean_name };
+            let item_url = format!("{}/{}", url_prefix, original_name);
 
-        if components.len() == 3 {
-            let cat_key = parse_numbered_name(&components[0]);
-            let chap_key = parse_numbered_name(&components[1]);
-            categories.entry(cat_key).or_default().entry(chap_key).or_default()
-                .push(SidebarItem { title, path: link, children: vec![] });
-        } else if components.len() == 2 {
-            let cat_key = parse_numbered_name(&components[0]);
-            categories.entry(cat_key).or_default()
-                .entry((i32::MIN, "_direct".to_string())).or_default()
-                .push(SidebarItem { title, path: link, children: vec![] });
-        }
-    }
-
-    let mut sidebar_items = Vec::new();
-    for ((_, category_name), chapters) in categories {
-        if category_name == "images" { continue; }
-
-        let mut chapter_items = Vec::new();
-        for ((_, chapter_name), topics) in chapters {
-            if chapter_name == "_direct" {
-                chapter_items.extend(topics);
-            } else if chapter_name == "images" {
-                continue;
-            } else {
-                chapter_items.push(SidebarItem {
-                    title: format_title(&chapter_name),
-                    path: build_link(&format!("/{}/{}", category_name, chapter_name)),
-                    children: topics,
+            if path.is_dir() {
+                // Recursively scan subdirectory
+                let children = scan_dir(&path, &item_url);
+                items.push(SidebarItem {
+                    title: format_title(&display_name),
+                    path: build_link(&item_url),
+                    children,
+                });
+            } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                // It's a markdown file
+                let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
+                let file_url = format!("{}/{}", url_prefix, file_stem);
+                items.push(SidebarItem {
+                    title: format_title(&file_stem),
+                    path: build_link(&file_url),
+                    children: vec![],
                 });
             }
         }
-
-        sidebar_items.push(SidebarItem {
-            title: format_title(&category_name),
-            path: build_link(&format!("/{}", category_name)),
-            children: chapter_items,
-        });
+        items
     }
 
-    sidebar_items
+    let content_dir = std::path::Path::new("assets/content");
+    let mut categories = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(content_dir) {
+        let mut tops: Vec<_> = entries
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name == "images" { return None; }
+                Some((parse_numbered_name(&name), e.path(), name))
+            })
+            .collect();
+
+        tops.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for ((_, clean_name), path, original_name) in tops {
+            let display_name = if clean_name.is_empty() { original_name.clone() } else { clean_name };
+            let url_prefix = format!("/{}", original_name);
+            let children = scan_dir(&path, &url_prefix);
+
+            categories.push(SidebarItem {
+                title: format_title(&display_name),
+                path: build_link(&url_prefix),
+                children,
+            });
+        }
+    }
+
+    categories
 }
 
 async fn index_handler(headers: HeaderMap) -> impl IntoResponse {
-    render_page("index", None, None, headers).await
+    render_page(&["index"], headers).await
 }
 
-async fn category_handler(Path(category): Path<String>, headers: HeaderMap) -> impl IntoResponse {
-    render_page(&category, None, None, headers).await
-}
-
-async fn chapter_handler(Path((category, chapter)): Path<(String, String)>, headers: HeaderMap) -> impl IntoResponse {
-    render_page(&category, Some(&chapter), None, headers).await
-}
-
-async fn topic_handler(Path((category, chapter, topic)): Path<(String, String, String)>, headers: HeaderMap) -> impl IntoResponse {
-    render_page(&category, Some(&chapter), Some(&topic), headers).await
+async fn dynamic_handler(Path(path): Path<String>, headers: HeaderMap) -> impl IntoResponse {
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    render_page(&segments, headers).await
 }
 
 fn format_title(s: &str) -> String {
@@ -257,14 +240,13 @@ fn format_title(s: &str) -> String {
         .join(" ")
 }
 
-async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>, _headers: HeaderMap) -> Response {
-    let file_path = match (chapter, topic) {
-        (Some(ch), Some(t)) => format!("assets/content/{}/{}/{}.md", category, ch, t),
-        (Some(ch), None) => format!("assets/content/{}/{}.md", category, ch),
-        (None, _) => format!("assets/content/{}.md", category),
+async fn render_page(segments: &[&str], _headers: HeaderMap) -> Response {
+    // Build file path from segments
+    let file_path = if segments.len() == 1 && segments[0] == "index" {
+        "assets/content/index.md".to_string()
+    } else {
+        format!("assets/content/{}.md", segments.join("/"))
     };
-
-
 
     let markdown_input = match fs::read_to_string(&file_path).await {
         Ok(content) => content,
@@ -327,11 +309,8 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
         }
     }).to_string();
 
-    let active_path = match (chapter, topic) {
-        (Some(ch), Some(t)) => format!("/{}/{}/{}", category, ch, t),
-        (Some(ch), None) => format!("/{}/{}", category, ch),
-        (None, _) => format!("/{}", category),
-    };
+    let active_path = format!("/{}", segments.join("/"));
+    let category = segments.first().copied().unwrap_or("index");
 
     let current_category = if category == "index" {
         String::new()
@@ -345,16 +324,14 @@ async fn render_page(category: &str, chapter: Option<&str>, topic: Option<&str>,
         items: generate_sidebar(),
     };
     
-    let page_title = if let Some(t) = topic {
-        format_title(t)
-    } else if let Some(ch) = chapter {
-        format_title(ch)
-    } else {
-        if category == "index" {
+    let page_title = if let Some(last) = segments.last() {
+        if *last == "index" {
             "Sawy's Notes".to_string()
         } else {
-            format_title(category)
+            format_title(last)
         }
+    } else {
+        "Sawy's Notes".to_string()
     };
 
     // Inject recently added section for index page
